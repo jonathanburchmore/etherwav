@@ -11,7 +11,8 @@ parser = argparse.ArgumentParser( prog = 'etherwav', description = 'Decode 10BAS
 parser.add_argument( 'filename' )
 parser.add_argument( '-t', '--threshold', type = float, default = -500, help = 'First zero crossing threshold, should be negative' )
 parser.add_argument( '-s', '--sample-rate', type = float, default = 250, help = 'Sample rate in MSa/s' )
-parser.add_argument( '-w', '--window', type = int, default = 6, help = 'Zero crossing window size, in samples' )
+parser.add_argument( '-m', '--min', type = float, default = 0.60, help = 'Minimum zero crossing spacing, in percent' )
+parser.add_argument( '-M', '--max', type = float, default = 1.30, help = 'Maximum zero crossing spacing, in percent' )
 
 args = parser.parse_args()
 
@@ -68,29 +69,36 @@ print( f"First zero crossing at offset {pos}" )
 bits.append( 1 )
 
 #
-# Find crossings +/- <window> samples of that spacing and output bits
+# Find zero crossings and output bits.  To handle slower sample rates, calculate the "ideal" position of the
+# zero crossing based on the number of decoded bits and the starting offset, plus half of the sample size
 #
 
-samples_per_bit = int( args.sample_rate / 10 )
+samples_per_bit = args.sample_rate / 10.0
+min_spacing = int( samples_per_bit * args.min )
+max_spacing = int( samples_per_bit * args.max )
 
-while True:
-	pos = pos + samples_per_bit - args.window
-
-	if pos > len( datapoints ):
-		break
-
-	bit = None
-	for pos in range( pos, min( pos + int( args.window * 2 ), len( datapoints ) ) ):
+while pos < len( datapoints ):
+	pos = pos + min_spacing
+	while pos < min( pos + max_spacing, len( datapoints ) ):
 		if datapoints[ pos - 1 ] < 0 and datapoints[ pos ] >= 0:
 			bit = 1
 			break
 		elif datapoints[ pos - 1 ] > 0 and datapoints[ pos ] <= 0:
 			bit = 0
 			break
+		elif datapoints[ pos - 1 ] == 0 and datapoints[ pos ] == 0:
+			bit = -1
+			break;
+
+		pos = pos + 1
 
 	if bit == None:
-		print( f"No crossing found between {pos - ( args.window * 2 )} and {pos}--end of data?" )
+		print( f"No crossing found for bit {len( bits )}--end of data?" )
 		break;
+	elif bit == -1:
+		print( f"Quiet period detected at offset {pos}, stopping" )
+		break
+
 	bits.append( bit )
 
 print( f"Total of {len( bits )} bits decoded" )
