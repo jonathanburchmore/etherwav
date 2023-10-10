@@ -68,8 +68,7 @@ print( f"First zero crossing at offset {pos}" )
 bits.append( 1 )
 
 #
-# Sample rate is 250M/sec, so 100ns crossings should occur roughly every 25 samples.
-# Find crossings +/- 6 samples of that spacing and output bits
+# Find crossings +/- <window> samples of that spacing and output bits
 #
 
 samples_per_bit = int( args.sample_rate / 10 )
