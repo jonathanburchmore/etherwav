@@ -11,8 +11,6 @@ parser = argparse.ArgumentParser( prog = 'etherwav', description = 'Decode 10BAS
 parser.add_argument( 'filename' )
 parser.add_argument( '-t', '--threshold', type = float, default = -500, help = 'First zero crossing threshold, should be negative' )
 parser.add_argument( '-s', '--sample-rate', type = float, default = 250, help = 'Sample rate in MSa/s' )
-parser.add_argument( '-m', '--min', type = float, default = 0.60, help = 'Minimum zero crossing spacing, in percent' )
-parser.add_argument( '-M', '--max', type = float, default = 1.30, help = 'Maximum zero crossing spacing, in percent' )
 
 args = parser.parse_args()
 
@@ -69,37 +67,47 @@ print( f"First zero crossing at offset {pos}" )
 bits.append( 1 )
 
 #
-# Find zero crossings and output bits.  To handle slower sample rates, calculate the "ideal" position of the
-# zero crossing based on the number of decoded bits and the starting offset, plus half of the sample size
+# Find zero crossings and output bits.  Zero crossing direction is determined by the slope of the line
+# across 3 datapoints at samples_per_bit.  Position ambiguity is resolved by resynchronizing to the closest
+# actual zero crossing after each bit.
 #
 
 samples_per_bit = args.sample_rate / 10.0
-min_spacing = int( samples_per_bit * args.min )
-max_spacing = int( samples_per_bit * args.max )
 
 while pos < len( datapoints ):
-	pos = pos + min_spacing
-	while pos < min( pos + max_spacing, len( datapoints ) ):
-		if datapoints[ pos - 1 ] < 0 and datapoints[ pos ] >= 0:
-			bit = 1
-			break
-		elif datapoints[ pos - 1 ] > 0 and datapoints[ pos ] <= 0:
-			bit = 0
-			break
-		elif datapoints[ pos - 1 ] == 0 and datapoints[ pos ] == 0:
-			bit = -1
-			break;
+	pos = pos + int( samples_per_bit )
+	if pos > len( datapoints ):
+		break
 
-		pos = pos + 1
-
-	if bit == None:
-		print( f"No crossing found for bit {len( bits )}--end of data?" )
-		break;
-	elif bit == -1:
+	if datapoints[ pos - 1 ] == 0 and datapoints[ pos ] == 0:
 		print( f"Quiet period detected at offset {pos}, stopping" )
 		break
 
+	# Determine the direction at this sample over a range of 3 samples to avoid duplicates
+	if datapoints[ pos - 2 ] < datapoints[ pos ]:
+		bit = 1
+	elif datapoints[ pos - 2 ] > datapoints[ pos ]:
+		bit = 0
+
 	bits.append( bit )
+
+	# Attempt to resynchronize at the actual zero crossing datapoint.  Target is the datapoint
+	# immediately after the zero crossing
+
+	if bit == 0:
+		if datapoints[ pos ] > 0:
+			while pos < len( datapoints ) - 1 and datapoints[ pos ] > 0:
+				pos = pos + 1
+		elif datapoints[ pos ] < 0:
+			while pos > 0 and datapoints[ pos - 1 ] < 0:
+				pos = pos - 1
+	elif bit == 1:
+		if datapoints[ pos - 1 ] > 0:
+			while pos > 0 and datapoints[ pos - 1 ] > 0:
+				pos = pos - 1
+		elif datapoints[ pos ] < 0:
+			while pos < len( datapoints ) - 1 and datapoints[ pos ] < 0:
+				pos = pos + 1
 
 print( f"Total of {len( bits )} bits decoded" )
 
