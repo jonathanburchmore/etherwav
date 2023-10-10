@@ -1,6 +1,19 @@
 #!env python3
 
 import csv
+import argparse
+
+#
+# Parse arguments
+#
+
+parser = argparse.ArgumentParser( prog = 'etherwav', description = 'Decode 10BASE-T ethernet frames from OWON HDS272S CSV exports' )
+parser.add_argument( 'filename' )
+parser.add_argument( '-t', '--threshold', type = float, default = -500, help = 'First zero crossing threshold, should be negative' )
+parser.add_argument( '-s', '--sample-rate', type = float, default = 250, help = 'Sample rate in MSa/s' )
+parser.add_argument( '-w', '--window', type = int, default = 6, help = 'Zero crossing window size, in samples' )
+
+args = parser.parse_args()
 
 #
 # Collect datapoints
@@ -9,7 +22,7 @@ import csv
 datapoints = []
 bits = []
 
-with open( '/home/burch/Desktop/WAVE1.CSV', newline = '' ) as csvfile:
+with open( args.filename, newline = '' ) as csvfile:
 	reader = csv.reader( csvfile, delimiter = ',' )
 	past_header = False
 	for row in reader:
@@ -23,10 +36,9 @@ with open( '/home/burch/Desktop/WAVE1.CSV', newline = '' ) as csvfile:
 #
 
 pos = 0
-threshold = -500
 
 while pos < len( datapoints ):
-	if datapoints[ pos ] <= threshold:
+	if datapoints[ pos ] <= args.threshold:
 		break
 
 	pos = pos + 1
@@ -60,14 +72,16 @@ bits.append( 1 )
 # Find crossings +/- 6 samples of that spacing and output bits
 #
 
+samples_per_bit = int( args.sample_rate / 10 )
+
 while True:
-	pos = pos + 25 - 6
+	pos = pos + samples_per_bit - args.window
 
 	if pos > len( datapoints ):
 		break
 
 	bit = None
-	for pos in range( pos, pos + 12 ):
+	for pos in range( pos, min( pos + int( args.window * 2 ), len( datapoints ) ) ):
 		if datapoints[ pos - 1 ] < 0 and datapoints[ pos ] >= 0:
 			bit = 1
 			break
@@ -76,9 +90,8 @@ while True:
 			break
 
 	if bit == None:
-		print( f"No crossing found between {pos - 12} and {pos}--end of data?" )
+		print( f"No crossing found between {pos - ( args.window * 2 )} and {pos}--end of data?" )
 		break;
-
 	bits.append( bit )
 
 print( f"Total of {len( bits )} bits decoded" )
